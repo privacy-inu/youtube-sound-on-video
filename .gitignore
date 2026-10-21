@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec.bak
+youtube_cookies.txt
+*_ytsound.mp4
