@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>YouTube Sound On Video</title>
+<meta name="description" content="Put the sound of a YouTube video onto your own video, in the browser. Nothing is uploaded: the mixing runs on your machine.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e5393b'/%3E%3Cpath d='M12 9v14l11-7z' fill='white'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --fg: #17181c; --muted: #6b6f78; --rule: #e3e1dc; --rule-strong: #c9c6bf;
+    --accent: #e5393b; --accent-ink: #ffffff; --ok: #1f8a4c; --warn: #b26a00; --field: #fbfaf8; --shadow: 0 1px 2px rgba(0,0,0,.06);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121317; --panel: #1b1d23; --fg: #eceef2; --muted: #9a9fab; --rule: #2a2d36; --rule-strong: #3b3f4a;
+      --accent: #ff5658; --accent-ink: #160a0a; --ok: #4fcf7c; --warn: #f0b24a; --field: #15171c; --shadow: none;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121317; --panel: #1b1d23; --fg: #eceef2; --muted: #9a9fab; --rule: #2a2d36; --rule-strong: #3b3f4a;
+    --accent: #ff5658; --accent-ink: #160a0a; --ok: #4fcf7c; --warn: #f0b24a; --field: #15171c; --shadow: none;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding-block: calc(24px + env(safe-area-inset-top, 0px)) calc(40px + env(safe-area-inset-bottom, 0px)); padding-inline: 16px; }
+  main { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+  header h1 { font-size: 28px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.01em; text-wrap: balance; }
+  header p { margin: 0; color: var(--muted); }
+  .mark { display: inline-block; width: 30px; height: 30px; border-radius: 7px; background: var(--accent); vertical-align: -7px; margin-right: 10px; position: relative; }
+  .mark::after { content: ""; position: absolute; left: 11px; top: 8px; border-left: 11px solid var(--accent-ink); border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
+  section.step { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 18px 18px 16px; box-shadow: var(--shadow); }
+  .step h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 10px; }
+  .num { display: inline-flex; width: 24px; height: 24px; border-radius: 50%; background: var(--fg); color: var(--bg); font-size: 13px; font-weight: 700; align-items: center; justify-content: center; flex: none; }
+  .drop { display: block; border: 1.5px dashed var(--rule-strong); border-radius: 10px; padding: 18px; text-align: center; background: var(--field); cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); }
+  .drop input { display: none; }
+  .drop .pick { font-weight: 600; }
+  .drop .hint { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .name { margin-top: 8px; font-size: 14px; color: var(--ok); word-break: break-all; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tabs button { font: inherit; font-size: 14px; font-weight: 600; padding: 8px 14px; min-height: 40px; border-radius: 999px; border: 1px solid var(--rule-strong); background: var(--field); color: var(--fg); cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  .pane[hidden] { display: none; }
+  .linkrow { display: flex; gap: 8px; flex-wrap: wrap; }
+  .linkrow input { flex: 1 1 260px; min-width: 0; font: inherit; font-size: 16px; color: var(--fg); background: var(--field); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 10px 12px; }
+  button.sec { font: inherit; font-weight: 600; font-size: 15px; background: var(--fg); color: var(--bg); border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer; min-height: 44px; }
+  button.sec:disabled { opacity: .5; cursor: default; }
+  .player { position: relative; width: 100%; aspect-ratio: 16 / 9; max-width: 100%; background: #000; border-radius: 10px; overflow: hidden; margin-top: 12px; display: none; }
+  .player iframe, .player > div { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .rec { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  .rec .live { display: none; align-items: center; gap: 8px; color: var(--accent); font-weight: 600; font-size: 14px; }
+  .rec .live i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  .note { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
+  .note b { color: var(--fg); }
+  .note a { color: var(--accent); font-weight: 600; }
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 16px; }
+  .opts label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+  .opts input[type=number] { font: inherit; font-size: 16px; color: var(--fg); background: var(--field); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 8px 10px; width: 100%; }
+  .opts .check { flex-direction: row; align-items: center; gap: 8px; align-self: end; color: var(--fg); padding-bottom: 8px; }
+  .opts input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 14px; margin-bottom: 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  button.go { font: inherit; font-weight: 700; font-size: 16px; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px; padding: 12px 22px; cursor: pointer; min-height: 44px; }
+  button.go:disabled { opacity: .5; cursor: default; }
+  .status { color: var(--muted); font-size: 14px; min-width: 0; flex: 1; }
+  .bar { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; margin-top: 12px; display: none; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .result { display: none; margin-top: 14px; }
+  .result video { width: 100%; max-height: 420px; background: #000; border-radius: 10px; }
+  a.dl { display: inline-block; margin-top: 10px; font-weight: 700; color: var(--accent); }
+  .err { color: var(--accent); font-size: 14px; margin-top: 10px; display: none; white-space: pre-wrap; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; }
+  footer a { color: inherit; }
+  pre.log { display: none; max-height: 160px; overflow: auto; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--field); border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; margin: 10px 0 0; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1><span class="mark" aria-hidden="true"></span>YouTube Sound On Video</h1>
+    <p>Paste a YouTube link, pick your video, press Combine. It all happens in your browser: nothing is uploaded anywhere.</p>
+  </header>
+
+  <section class="step">
+    <h2><span class="num">1</span>Your video</h2>
+    <label class="drop" id="dropV">
+      <input type="file" id="fileV" accept="video/*,.mp4,.mov,.m4v,.mkv,.webm,.avi">
+      <div class="pick">Pick a video… or drop it here</div>
+      <div class="hint">mp4 or mov works best (the picture is kept as it is, no re-encoding). Up to a few hundred MB.</div>
+      <div class="name" id="nameV"></div>
+    </label>
+    <video id="probe" preload="metadata" muted playsinline style="display:none"></video>
+  </section>
+
+  <section class="step">
+    <h2><span class="num">2</span>The sound</h2>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tabLink" aria-selected="true">A YouTube link</button>
+      <button type="button" role="tab" id="tabFile" aria-selected="false">A file on this device</button>
+    </div>
+
+    <div class="pane" id="paneLink">
+      <div class="linkrow">
+        <input type="url" id="link" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off" spellcheck="false">
+        <button type="button" class="sec" id="loadBtn">Load</button>
+      </div>
+      <div class="player" id="player"><div id="yt"></div></div>
+      <div class="rec">
+        <button type="button" class="sec" id="recBtn" disabled>Record the sound</button>
+        <button type="button" class="sec" id="stopBtn" style="display:none">Stop</button>
+        <span class="live" id="live"><i></i><span id="liveText">Recording…</span></span>
+      </div>
+      <div class="name" id="nameR"></div>
+      <p class="note" id="howRec">
+        <b>How it works:</b> the video plays here and this page records what you hear, for as long as your video runs.
+        When the browser asks what to share, pick <b>this tab</b> and tick <b>Share tab audio</b>. Works in Chrome and
+        Edge on a computer. If an ad plays first, let it finish and press Record again.
+      </p>
+      <p class="note" id="noRec" style="display:none">
+        <b>This browser can't record a tab's sound.</b> Use Chrome or Edge on a computer, or the Windows app, which does
+        the whole job from the link: <a href="https://github.com/privacy-inu/youtube-sound-on-video/releases/latest">download YouTubeSoundOnVideo.exe</a>.
+      </p>
+    </div>
+
+    <div class="pane" id="paneFile" hidden>
+      <label class="drop" id="dropS">
+        <input type="file" id="fileS" accept="audio/*,video/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,.mp4,.webm,.mov">
+        <div class="pick">Pick a sound… or drop it here</div>
+        <div class="hint">mp3, m4a, wav, or any video whose sound you want.</div>
+        <div class="name" id="nameS"></div>
+      </label>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2><span class="num">3</span>Combine</h2>
+    <details>
+      <summary>More options</summary>
+      <div class="opts">
+        <label>Start offset (s)<input type="number" id="offset" value="0" min="0" step="0.1"></label>
+        <label>Volume (%)<input type="number" id="volume" value="100" min="0" max="400" step="5"></label>
+        <label>Keep original sound (%)<input type="number" id="keep" value="0" min="0" max="200" step="5"></label>
+        <label class="check"><input type="checkbox" id="loop"> Repeat the sound</label>
+      </div>
+    </details>
+    <div class="row">
+      <button class="go" id="go" disabled>Combine</button>
+      <div class="status" id="status">Pick a video and a sound first.</div>
+    </div>
+    <div class="bar" id="bar"><i id="barFill"></i></div>
+    <div class="err" id="err"></div>
+    <pre class="log" id="log"></pre>
+    <div class="result" id="result">
+      <video id="out" controls playsinline></video>
+      <a class="dl" id="dl" download>Download the result</a>
+    </div>
+  </section>
+
+  <footer>
+    Free and open source · <a href="https://github.com/privacy-inu/youtube-sound-on-video">source on GitHub</a> ·
+    the first Combine fetches the encoder once (32 MB), then it stays cached.
+  </footer>
+</main>
+
+<script src="vendor/ffmpeg-util.js"></script>
+<script src="vendor/ffmpeg.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var FFmpeg = window.FFmpegWASM && window.FFmpegWASM.FFmpeg;
+  var fetchFile = window.FFmpegUtil && window.FFmpegUtil.fetchFile;
+  var files = { video: null, sound: null, soundRecorded: false };
+  var videoSeconds = 0;
+  var engine = null, loading = null, busy = false;
+  var logLines = [];
+
+  function setStatus(t) { $('status').textContent = t; }
+  function showErr(t) { var e = $('err'); e.style.display = t ? 'block' : 'none'; e.textContent = t || ''; }
+  function progress(p) { var bar = $('bar'); bar.style.display = p == null ? 'none' : 'block'; if (p != null) $('barFill').style.width = Math.max(0, Math.min(100, p * 100)).toFixed(1) + '%'; }
+  function addLog(m) { logLines.push(m); if (logLines.length > 400) logLines.shift(); var pre = $('log'); pre.textContent = logLines.join('\n'); pre.scrollTop = pre.scrollHeight; }
+  function ext(name) { var m = /\.([a-z0-9]{2,5})$/i.exec(name || ''); return m ? m[1].toLowerCase() : ''; }
+  function mb(n) { return (n / 1048576).toFixed(1) + ' MB'; }
+  function ready() {
+    $('go').disabled = !(files.video && files.sound) || busy;
+    $('recBtn').disabled = !(files.video && player && playerReady) || recording || busy;
+    if (files.video && files.sound && !busy) setStatus('Ready. Press Combine.');
+    else if (!busy) setStatus(files.video ? 'Now the sound: load a YouTube link and record it, or pick a file.' : 'Pick a video first.');
+  }
+
+  // ---- step 1: the video (its length sets how long the recording runs)
+  function takeVideo(f) {
+    if (!f) return;
+    files.video = f; videoSeconds = 0;
+    $('nameV').textContent = f.name + ' (' + mb(f.size) + ')';
+    var probe = $('probe');
+    try { probe.src = URL.createObjectURL(f); } catch (e) { /* no metadata then: the recording runs until Stop */ }
+    showErr(''); ready();
+  }
+  $('probe').addEventListener('loadedmetadata', function () { videoSeconds = isFinite(this.duration) ? this.duration : 0; if (videoSeconds) $('nameV').textContent += ' · ' + videoSeconds.toFixed(1) + ' s'; });
+  function wire(dropId, inputId, take) {
+    var drop = $(dropId), input = $(inputId);
+    input.addEventListener('change', function () { take(input.files[0]); });
+    ['dragenter', 'dragover'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
+    ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
+    drop.addEventListener('drop', function (e) { take(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); });
+  }
+  wire('dropV', 'fileV', takeVideo);
+  wire('dropS', 'fileS', function (f) { if (!f) return; files.sound = f; files.soundRecorded = false; $('nameS').textContent = f.name + ' (' + mb(f.size) + ')'; $('nameR').textContent = ''; showErr(''); ready(); });
+
+  // ---- step 2: the tabs
+  function showTab(link) {
+    $('tabLink').setAttribute('aria-selected', link ? 'true' : 'false');
+    $('tabFile').setAttribute('aria-selected', link ? 'false' : 'true');
+    $('paneLink').hidden = !link; $('paneFile').hidden = link;
+  }
+  $('tabLink').addEventListener('click', function () { showTab(true); });
+  $('tabFile').addEventListener('click', function () { showTab(false); });
+
+  // ---- step 2: the YouTube link, the official player, and this tab's sound recorded while it plays
+  var canRecord = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && window.MediaRecorder);
+  if (!canRecord) { $('howRec').style.display = 'none'; $('noRec').style.display = 'block'; }
+  var player = null, playerReady = false, apiLoading = null, pendingId = null, recording = false, recStop = null;
+
+  function videoId(url) {
+    var m = /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/|v\/))([A-Za-z0-9_-]{11})/.exec(String(url || '').trim());
+    if (m) return m[1];
+    return /^[A-Za-z0-9_-]{11}$/.test(String(url || '').trim()) ? String(url).trim() : null;
+  }
+  function loadApi() {
+    if (window.YT && window.YT.Player) return Promise.resolve();
+    if (apiLoading) return apiLoading;
+    apiLoading = new Promise(function (resolve, reject) {
+      var prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function () { if (prev) prev(); resolve(); };
+      var s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; s.async = true;
+      s.onerror = function () { reject(new Error('The YouTube player did not load. Is youtube.com reachable here?')); };
+      document.head.appendChild(s);
+      setTimeout(function () { reject(new Error('The YouTube player took too long to load.')); }, 20000);
+    });
+    return apiLoading;
+  }
+  function loadVideo(id) {
+    $('player').style.display = 'block';
+    return loadApi().then(function () {
+      return new Promise(function (resolve, reject) {
+        if (player) { playerReady = false; pendingId = id; player.cueVideoById(id); resolve(); return; }
+        player = new YT.Player('yt', {
+          videoId: id, playerVars: { autoplay: 0, controls: 1, rel: 0, playsinline: 1, modestbranding: 1 },
+          events: {
+            onReady: function () { playerReady = true; ready(); resolve(); },
+            onStateChange: function (e) { onPlayerState(e.data); },
+            onError: function (e) { reject(new Error(e.data === 101 || e.data === 150 ? 'This video cannot be played outside YouTube. The Windows app can still do it.' : e.data === 100 ? 'That video was not found.' : 'YouTube refused to play this video (error ' + e.data + ').')); }
+          }
+        });
+      });
+    }).then(function () { if (pendingId) { playerReady = true; pendingId = null; ready(); } });
+  }
+  $('loadBtn').addEventListener('click', function () {
+    var id = videoId($('link').value);
+    showErr('');
+    if (!id) { showErr('That does not look like a YouTube link. It should contain watch?v=… or youtu.be/…'); return; }
+    $('loadBtn').disabled = true;
+    loadVideo(id).then(function () { $('loadBtn').disabled = false; ready(); }, function (err) { $('loadBtn').disabled = false; showErr(String(err && err.message || err)); });
+  });
+  $('link').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('loadBtn').click(); } });
+
+  var playingResolve = null, endedCallback = null;
+  function onPlayerState(s) {
+    if (s === YT.PlayerState.PLAYING && playingResolve) { playingResolve(); playingResolve = null; }
+    if (s === YT.PlayerState.ENDED && endedCallback) { endedCallback(); }
+  }
+  function pickMime() {
+    var list = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus'];
+    for (var i = 0; i < list.length; i++) { if (MediaRecorder.isTypeSupported(list[i])) return list[i]; }
+    return '';
+  }
+  // Records `seconds` of `stream` (audio only) and resolves with the Blob; `onTick(elapsed)` every 200 ms; returns a stop function on `handle`.
+  function recordStream(stream, seconds, onTick, handle) {
+    return new Promise(function (resolve, reject) {
+      var mime = pickMime();
+      var rec; try { rec = mime ? new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 192000 }) : new MediaRecorder(stream); } catch (e) { reject(e); return; }
+      var chunks = [], t0 = Date.now(), timer = null, done = false;
+      function finish() { if (done) return; done = true; clearInterval(timer); try { rec.stop(); } catch (e) { /* already stopped */ } }
+      rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.onerror = function (e) { finish(); reject(e.error || new Error('The recording failed.')); };
+      rec.onstop = function () { resolve(new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' })); };
+      rec.start(250);
+      timer = setInterval(function () { var el = (Date.now() - t0) / 1000; if (onTick) onTick(el); if (seconds && el >= seconds) finish(); }, 200);
+      if (handle) handle.stop = finish;
+    });
+  }
+  function recordYouTube() {
+    if (!player || !playerReady || !files.video) return Promise.reject(new Error('Load a YouTube link and pick your video first.'));
+    var seconds = videoSeconds ? videoSeconds + 0.3 : 0;
+    var offset = Math.max(0, parseFloat($('offset').value) || 0);
+    return navigator.mediaDevices.getDisplayMedia({ video: true, audio: true, preferCurrentTab: true, selfBrowserSurface: 'include', systemAudio: 'exclude', surfaceSwitching: 'exclude', monitorTypeSurfaces: 'exclude' })
+      .then(function (stream) {
+        var audio = stream.getAudioTracks()[0];
+        stream.getVideoTracks().forEach(function (t) { t.stop(); });
+        if (!audio) { stream.getTracks().forEach(function (t) { t.stop(); }); throw new Error('No sound was shared. Pick this tab in the dialog and tick "Share tab audio", then try again.'); }
+        var only = new MediaStream([audio]);
+        recording = true; recStop = { stop: null }; ready();
+        $('stopBtn').style.display = 'inline-block'; $('live').style.display = 'inline-flex'; $('nameR').textContent = '';
+        var started = new Promise(function (resolve) { playingResolve = resolve; setTimeout(resolve, 4000); });
+        player.unMute(); player.setVolume(100); player.seekTo(offset, true); player.playVideo();
+        return started.then(function () {
+          endedCallback = function () { if (recStop && recStop.stop) recStop.stop(); };
+          return recordStream(only, seconds, function (el) { $('liveText').textContent = 'Recording ' + el.toFixed(1) + (seconds ? ' of ' + seconds.toFixed(1) : '') + ' s'; }, recStop);
+        }).then(function (blob) {
+          endedCallback = null; try { player.pauseVideo(); } catch (e) { /* fine */ }
+          audio.stop();
+          return blob;
+        }, function (err) { endedCallback = null; audio.stop(); try { player.pauseVideo(); } catch (e) { /* fine */ } throw err; });
+      })
+      .then(function (blob) {
+        var id = videoId($('link').value) || 'youtube';
+        var type = blob.type || 'audio/webm';
+        var name = 'youtube_' + id + (type.indexOf('mp4') >= 0 ? '.m4a' : type.indexOf('ogg') >= 0 ? '.ogg' : '.webm');
+        files.sound = new File([blob], name, { type: type }); files.soundRecorded = true;
+        $('nameR').textContent = 'Recorded ' + name + ' (' + mb(blob.size) + ')' + (offset ? ' from ' + offset + ' s in' : '');
+        $('nameS').textContent = '';
+        return blob;
+      })
+      .then(function (b) { stopUi(); return b; }, function (err) { stopUi(); throw err; });
+    function stopUi() { recording = false; recStop = null; $('stopBtn').style.display = 'none'; $('live').style.display = 'none'; ready(); }
+  }
+  $('recBtn').addEventListener('click', function () {
+    showErr('');
+    recordYouTube().then(null, function (err) { var m = String(err && err.message || err); if (/NotAllowed|Permission|denied/i.test(m)) m = 'Sharing was cancelled. Press Record again, pick this tab and tick "Share tab audio".'; showErr(m); });
+  });
+  $('stopBtn').addEventListener('click', function () { if (recStop && recStop.stop) recStop.stop(); });
+
+  // ---- step 3: the mix (ffmpeg.wasm, vendored next to this page; the first load fetches the 32 MB core once)
+  function load() {
+    if (engine) return Promise.resolve(engine);
+    if (loading) return loading;
+    if (!FFmpeg || !fetchFile) return Promise.reject(new Error('The encoder script did not load. Reload the page.'));
+    var base = new URL('vendor/', location.href).href;
+    var f = new FFmpeg();
+    f.on('log', function (e) { addLog(e.message); });
+    f.on('progress', function (e) { if (busy && e.progress >= 0 && e.progress <= 1) progress(e.progress); });
+    setStatus('Loading the encoder (32 MB, once)…');
+    var ver = '?v=0.12.6b'; // bumps past any cached copy of the engine files
+    loading = f.load({ coreURL: base + 'ffmpeg-core.js' + ver, wasmURL: base + 'ffmpeg-core.wasm' + ver, classWorkerURL: base + '814.ffmpeg.js' + ver })
+      .then(function () { engine = f; loading = null; return f; }, function (err) { loading = null; throw err; });
+    return loading;
+  }
+  function num(id, fallback) { var v = parseFloat($(id).value); return isFinite(v) ? v : fallback; }
+
+  // The job: the video's picture as it is, the sound laid on it from `offset` seconds in, at `volume` %, with `keep` %
+  // of the video's own sound mixed back, looped when asked; the result is cut to the video's length (silence padded).
+  function combine(video, sound, o) {
+    o = o || {};
+    var offset = Math.max(0, o.offset || 0), volume = Math.max(0, (o.volume == null ? 100 : o.volume) / 100), keep = Math.max(0, (o.keep || 0) / 100), loop = !!o.loop;
+    var vIn = 'in_v.' + (ext(video.name) || 'mp4'), sIn = 'in_s.' + (ext(sound.name) || 'webm');
+    var f;
+    return load().then(function (ff) { f = ff; return Promise.all([fetchFile(video), fetchFile(sound)]); })
+      .then(function (bufs) { return f.writeFile(vIn, bufs[0]).then(function () { return f.writeFile(sIn, bufs[1]); }); })
+      .then(function () { return run(keep); })
+      .then(null, function (err) {
+        // a video without a sound track of its own: mix nothing back and say so
+        if (keep > 0 && /0:a|matches no streams|Stream specifier|Invalid argument/i.test(String(err && err.message))) { addLog('(your video has no sound of its own: mixed without it)'); return run(0); }
+        throw err;
+      })
+      .then(function () { return f.readFile('out.mp4'); })
+      .then(function (data) { cleanup(); return new Blob([data.buffer || data], { type: 'video/mp4' }); }, function (err) { cleanup(); throw err; });
+
+    function run(keepNow) {
+      var chain = '[1:a]atrim=start=' + offset + ',asetpts=PTS-STARTPTS,volume=' + volume.toFixed(3) + '[yt]';
+      var last = '[yt]';
+      if (keepNow > 0) { chain += ';[0:a]volume=' + keepNow.toFixed(3) + '[orig];[yt][orig]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mix]'; last = '[mix]'; }
+      chain += ';' + last + 'apad[aout]';
+      var args = ['-y', '-i', vIn];
+      if (loop) args.push('-stream_loop', '-1');
+      args.push('-i', sIn, '-filter_complex', chain, '-map', '0:v:0', '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', 'out.mp4');
+      var tail = logLines.length;
+      return f.exec(args).then(function (code) {
+        if (code !== 0) { var why = logLines.slice(tail).filter(function (l) { return /error|invalid|not found|no such|matches no|could not/i.test(l); }).slice(-3).join('\n'); throw new Error(why || ('ffmpeg exited with ' + code)); }
+      });
+    }
+    function cleanup() { [vIn, sIn, 'out.mp4'].forEach(function (n) { try { f && f.deleteFile(n); } catch (e) { /* nothing to delete */ } }); }
+  }
+
+  $('go').addEventListener('click', function () {
+    if (busy || !files.video || !files.sound) return;
+    busy = true; ready(); showErr(''); $('result').style.display = 'none'; $('log').style.display = 'none'; logLines = []; progress(0);
+    // a recorded sound already started at the offset: do not skip it twice
+    var o = { offset: files.soundRecorded ? 0 : num('offset', 0), volume: num('volume', 100), keep: num('keep', 0), loop: $('loop').checked };
+    var t0 = Date.now();
+    setStatus('Working… (long videos take a while: the mixing runs on your machine)');
+    combine(files.video, files.sound, o).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var base = files.video.name.replace(/\.[a-z0-9]{2,5}$/i, '');
+      $('out').src = url; $('dl').href = url; $('dl').download = base + '_ytsound.mp4';
+      $('result').style.display = 'block';
+      progress(null);
+      setStatus('Done in ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s: ' + mb(blob.size) + '.');
+    }, function (err) {
+      progress(null);
+      setStatus('That did not work.');
+      showErr(String(err && err.message || err) + (/moov|mp4|muxer|codec/i.test(String(err && err.message)) ? '\nTip: the picture is copied as it is, so the video should be an mp4 or mov (H.264). Convert it first if it is something else.' : ''));
+      $('log').style.display = 'block';
+    }).then(function () { busy = false; ready(); });
+  });
+
+  ready();
+  // for tests and scripts: combine(videoFile, soundFile, { offset, volume, keep, loop }) -> Promise<Blob>; recordStream(stream, seconds) -> Promise<Blob>
+  window.ytsv = { combine: combine, load: load, recordStream: recordStream, videoId: videoId, takeVideo: takeVideo, setSound: function (f) { files.sound = f; files.soundRecorded = false; ready(); } };
+})();
+</script>
+</body>
+</html>

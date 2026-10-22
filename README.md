@@ -4,6 +4,13 @@ Put the sound of any YouTube video onto a video file of your own, in one window:
 paste the YouTube link, pick your video, press **Combine**. You get a new MP4 next to
 your video with your picture and the YouTube audio.
 
+## Use it in the browser
+
+**https://privacy-inu.github.io/youtube-sound-on-video/** : paste the YouTube link, pick your video, press
+**Record the sound** (choose *this tab* and tick *Share tab audio* when the browser asks), then **Combine**. The video
+plays in the page while its sound is recorded for the length of your clip; the mix runs on your machine (nothing is
+uploaded). Needs Chrome or Edge on a computer; phones and other browsers can use a sound file instead, or the app below.
+
 ## Download (Windows)
 
 Grab `YouTubeSoundOnVideo.exe` from the [Releases](../../releases) page and run it.
